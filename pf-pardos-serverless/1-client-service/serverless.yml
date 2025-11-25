@@ -1,0 +1,26 @@
+org: ieeeutec
+service: pardos-client-service
+
+provider:
+  name: aws
+  runtime: python3.13
+  stage: dev
+  region: us-east-1
+  # RECORDATORIO: LabRole para Academy
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole
+
+  # Variables de entorno globales para las Lambdas
+  environment:
+    # Aquí importamos el nombre de la tabla exportada desde 0-infra
+    ORDERS_TABLE_NAME: !ImportValue PardosOrdersTableName
+
+functions:
+  createOrder:
+    handler: handler.create_order
+    events:
+      - http:
+          path: orders
+          method: post
+          cors: true
+# No definimos 'resources' porque la tabla ya existe en 0-infra

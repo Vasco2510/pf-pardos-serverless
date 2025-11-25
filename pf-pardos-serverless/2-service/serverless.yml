@@ -1,0 +1,95 @@
+org: ieeeutec
+service: pardos-staff-service
+
+provider:
+  name: aws
+  runtime: python3.13
+  stage: dev
+  region: us-east-1
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole
+  environment:
+    ORDERS_TABLE_NAME: !ImportValue PardosOrdersTableName
+
+functions:
+  # Lambda auxiliar para actualizar estado y guardar token
+  manageState:
+    handler: handler.manage_state
+
+  # Lambda API para avanzar
+  advanceOrder:
+    handler: handler.advance_order
+    events:
+      - http:
+          path: orders/advance
+          method: post
+          cors: true
+
+stepFunctions:
+  stateMachines:
+    PardosFlow:
+      name: PardosOrderWorkflow-${self:provider.stage}
+      definition:
+        StartAt: EstadoCocina
+        States:
+          # --- PASO 1: COCINA ---
+          EstadoCocina:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
+            Parameters:
+              FunctionName: !GetAtt ManageStateLambdaFunction.Arn
+              Payload:
+                tenantId.$: "$.tenantId"
+                orderId.$: "$.orderId"
+                status: "COOKING"
+                taskToken.$: "$$.Task.Token" # ¡Aquí se genera el token mágico!
+            Next: EstadoEmpaque
+
+          # --- PASO 2: EMPAQUE ---
+          EstadoEmpaque:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
+            Parameters:
+              FunctionName: !GetAtt ManageStateLambdaFunction.Arn
+              Payload:
+                tenantId.$: "$.tenantId"
+                orderId.$: "$.orderId"
+                status: "PACKAGING"
+                taskToken.$: "$$.Task.Token"
+            Next: EstadoDelivery
+
+          # --- PASO 3: DELIVERY ---
+          EstadoDelivery:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
+            Parameters:
+              FunctionName: !GetAtt ManageStateLambdaFunction.Arn
+              Payload:
+                tenantId.$: "$.tenantId"
+                orderId.$: "$.orderId"
+                status: "DELIVERY"
+                taskToken.$: "$$.Task.Token"
+            Next: EstadoFinal
+
+          # --- FINAL: ENTREGADO ---
+          EstadoFinal:
+            Type: Task
+            Resource: !GetAtt ManageStateLambdaFunction.Arn # Aquí NO esperamos token, solo actualizamos y fin
+            Parameters:
+              tenantId.$: "$.tenantId"
+              orderId.$: "$.orderId"
+              status: "DELIVERED"
+            End: true
+
+# Plugin necesario para Step Functions
+plugins:
+  - serverless-step-functions
+
+# Exportamos el ARN de la Step Function para que el Client Service lo use
+resources:
+  Outputs:
+    PardosFlowArn:
+      Value:
+        Ref: PardosFlowStepFunctionsStateMachine
+      Export:
+        Name: PardosFlowArn

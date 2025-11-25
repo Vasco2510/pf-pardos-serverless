@@ -1,0 +1,121 @@
+org: ieeeutec
+service: pardos-shared-infra
+
+provider:
+  name: aws
+  runtime: python3.13
+  stage: dev
+  region: us-east-1
+  # CRÍTICO PARA ACADEMY: Usar el LabRole existente
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole
+
+resources:
+  Resources:
+    # ---------------------------------------------------------
+    # 1. EventBus Personalizado (Sistema Nervioso)
+    # ---------------------------------------------------------
+    PardosRestaurantBus:
+      Type: AWS::Events::EventBus
+      Properties:
+        Name: PardosRestaurantBus
+
+    # ---------------------------------------------------------
+    # 2. Tabla de Pedidos (Orders)
+    # ---------------------------------------------------------
+    OrdersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-OrdersTable-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: tenantId
+            AttributeType: S
+          - AttributeName: orderId
+            AttributeType: S
+          - AttributeName: status
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenantId # PK: Sede
+            KeyType: HASH
+          - AttributeName: orderId # SK: ID Pedido
+            KeyType: RANGE
+        # Índice Global para filtrar por estado (Dashboard)
+        GlobalSecondaryIndexes:
+          - IndexName: StatusIndex
+            KeySchema:
+              - AttributeName: tenantId
+                KeyType: HASH
+              - AttributeName: status
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    # ---------------------------------------------------------
+    # 3. Tabla de Productos (Products)
+    # ---------------------------------------------------------
+    ProductsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-ProductsTable-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: tenantId
+            AttributeType: S
+          - AttributeName: productId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenantId
+            KeyType: HASH
+          - AttributeName: productId
+            KeyType: RANGE
+
+    # ---------------------------------------------------------
+    # 4. Tabla de WebSockets (Conexiones)
+    # ---------------------------------------------------------
+    WebSocketConnectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-WebSocketConnectionsTable-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+          - AttributeName: tenantId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        # Índice para buscar conexiones por Sede (Broadcast)
+        GlobalSecondaryIndexes:
+          - IndexName: TenantIndex
+            KeySchema:
+              - AttributeName: tenantId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        # TTL: Limpieza automática de conexiones muertas
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+  # ---------------------------------------------------------
+  # OUTPUTS: Para exportar los nombres y usarlos en otros stacks
+  # ---------------------------------------------------------
+  Outputs:
+    OrdersTableName:
+      Value: !Ref OrdersTable
+      Export:
+        Name: PardosOrdersTableName
+    EventBusName:
+      Value: !Ref PardosRestaurantBus
+      Export:
+        Name: PardosEventBusName
+    WebSocketTableName:
+      Value: !Ref WebSocketConnectionsTable
+      Export:
+        Name: PardosWebSocketTableName
+    EventBusArn:
+      Value: !GetAtt PardosRestaurantBus.Arn
+      Export:
+        Name: PardosEventBusArn
