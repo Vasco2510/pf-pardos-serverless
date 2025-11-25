@@ -10,6 +10,12 @@ provider:
     role: arn:aws:iam::${aws:accountId}:role/LabRole
   environment:
     ORDERS_TABLE_NAME: !ImportValue PardosOrdersTableName
+package:
+  individually: true
+  patterns:
+    - "!node_modules/**"
+    - "!package-lock.json"
+    - "!package.json"
 
 functions:
   # Lambda auxiliar para actualizar estado y guardar token
