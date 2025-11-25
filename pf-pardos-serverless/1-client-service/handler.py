@@ -5,6 +5,9 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
+
+sfn_client = boto3.client('stepfunctions')
+SFN_ARN = os.environ['SFN_ARN']
 # Inicializamos DynamoDB
 dynamodb = boto3.resource('dynamodb')
 # Leemos el nombre de la tabla desde la variable de entorno (definida en serverless.yml)
@@ -42,6 +45,18 @@ def create_order(event, context):
         # 3. Guardar en DynamoDB
         # Convertimos float a Decimal si es necesario, pero aquí items es lista
         table.put_item(Item=item)
+
+# --- NUEVO: INICIAR STEP FUNCTION ---
+        sfn_client.start_execution(
+            stateMachineArn=SFN_ARN,
+            name=order_id, # Usamos el ID del pedido como nombre de ejecución (deduplicación)
+            input=json.dumps({
+                "tenantId": tenant_id,
+                "orderId": order_id
+            })
+        )
+        print(f"Flujo iniciado para {order_id}")
+        # ------------------------------------
 
         # 4. Respuesta Exitosa
         return {

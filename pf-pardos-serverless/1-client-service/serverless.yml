@@ -12,6 +12,8 @@ provider:
 
   # Variables de entorno globales para las Lambdas
   environment:
+    ORDERS_TABLE_NAME: !ImportValue PardosOrdersTableName
+    SFN_ARN: !ImportValue PardosFlowArn
     # Aquí importamos el nombre de la tabla exportada desde 0-infra
     ORDERS_TABLE_NAME: !ImportValue PardosOrdersTableName
 
